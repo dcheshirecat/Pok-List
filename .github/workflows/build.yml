@@ -42,8 +42,8 @@ jobs:
 
       # ── 5. Scaffold entire Android project via Python ─────────────────────────
       - name: Create Android project structure
+        shell: python3 {0}
         run: |
-          python3 << 'PYEOF'
           import os, shutil
 
           # ── Directory tree ────────────────────────────────────────────────────
@@ -263,7 +263,6 @@ public class MainActivity extends Activity {
 """)
 
           print("Android project scaffold complete.")
-          PYEOF
 
       # ── 6. Build signed release APK ───────────────────────────────────────────
       - name: Build release APK
