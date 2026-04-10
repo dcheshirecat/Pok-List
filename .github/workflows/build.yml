@@ -54,21 +54,85 @@ jobs:
             -keypass  pokemon123 \
             -dname "CN=PokemonTierList, OU=App, O=Dev, L=City, ST=State, C=US"
 
-      # ── 7. Scaffold Android project ───────────────────────────────────────────
+      # ── 7. Install Pillow for icon generation ─────────────────────────────────
+      - name: Install Pillow
+        run: pip install Pillow --quiet --break-system-packages
+
+      # ── 8. Scaffold Android project + generate icon ───────────────────────────
       - name: Scaffold Android project
         shell: python3 {0}
         run: |
-          import os, shutil, subprocess
+          import os, shutil, subprocess, math
+          from PIL import Image, ImageDraw
+
+          MIPMAP_SIZES = {
+              'mipmap-mdpi':    48,
+              'mipmap-hdpi':    72,
+              'mipmap-xhdpi':   96,
+              'mipmap-xxhdpi':  144,
+              'mipmap-xxxhdpi': 192,
+          }
 
           dirs = [
               'app/src/main/java/com/pokemon/tierlist',
               'app/src/main/res/values',
               'app/src/main/assets',
-          ]
+          ] + ['app/src/main/res/' + m for m in MIPMAP_SIZES]
           for d in dirs:
               os.makedirs(d, exist_ok=True)
 
           shutil.copy('index.html', 'app/src/main/assets/index.html')
+
+          # ── Draw icon ─────────────────────────────────────────────────────────
+          def draw_icon(size):
+              img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+              d = ImageDraw.Draw(img)
+              s = size
+              pad = int(s * 0.04)
+              r   = int(s * 0.22)
+              # Deep navy rounded background
+              d.rounded_rectangle([pad, pad, s-pad, s-pad], radius=r,
+                                  fill=(13, 13, 26, 255))
+              cx, cy = s / 2, s / 2
+              br = s * 0.38
+              # Pokeball top (red)
+              d.pieslice([cx-br, cy-br, cx+br, cy+br], 180, 0,
+                         fill=(220, 40, 40, 255))
+              # Pokeball bottom (white)
+              d.pieslice([cx-br, cy-br, cx+br, cy+br], 0, 180,
+                         fill=(240, 240, 240, 255))
+              # Centre band (black)
+              bw = br * 0.18
+              d.rectangle([cx-br, cy-bw, cx+br, cy+bw], fill=(20, 20, 20, 255))
+              # Centre button
+              cr = br * 0.22
+              d.ellipse([cx-cr, cy-cr, cx+cr, cy+cr], fill=(20, 20, 20, 255))
+              ir = cr * 0.55
+              d.ellipse([cx-ir, cy-ir, cx+ir, cy+ir], fill=(240, 240, 240, 255))
+              # Yellow sparkles
+              star_color = (255, 204, 0, 220)
+              def star(ox, oy, sr):
+                  for i in range(4):
+                      a = math.radians(i * 90)
+                      b = math.radians(i * 90 + 45)
+                      d.line([ox, oy,
+                              ox + math.cos(a)*sr,
+                              oy + math.sin(a)*sr],
+                             fill=star_color, width=max(1, int(sr*0.22)))
+                      d.line([ox, oy,
+                              ox + math.cos(b)*sr*0.4,
+                              oy + math.sin(b)*sr*0.4],
+                             fill=star_color, width=max(1, int(sr*0.14)))
+              m = s * 0.16
+              star(m,         m,         s*0.07)
+              star(s - m,     m,         s*0.05)
+              star(s - m*0.8, s - m*0.8, s*0.06)
+              return img
+
+          for folder, size in MIPMAP_SIZES.items():
+              draw_icon(size).save('app/src/main/res/' + folder + '/ic_launcher.png')
+
+          print('Icons generated.')
 
           open('settings.gradle', 'w').write(
           'pluginManagement {\n'
@@ -145,6 +209,7 @@ jobs:
           '    <application\n'
           '        android:allowBackup="true"\n'
           '        android:label="Pokemon Tier List"\n'
+          '        android:icon="@mipmap/ic_launcher"\n'
           '        android:usesCleartextTraffic="true">\n'
           '        <activity\n'
           '            android:name=".MainActivity"\n'
@@ -237,11 +302,11 @@ jobs:
 
           print("Scaffold complete.")
 
-      # ── 8. Build signed release APK ───────────────────────────────────────────
+      # ── 9. Build signed release APK ───────────────────────────────────────────
       - name: Build release APK
         run: gradle assembleRelease --no-daemon --stacktrace
 
-      # ── 9. Upload APK artifact ────────────────────────────────────────────────
+      # ── 10. Upload APK artifact ───────────────────────────────────────────────
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
