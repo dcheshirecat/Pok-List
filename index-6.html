@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Pokémon Tier List</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
+<style>
+  :root {
+    --bg: #0d0d1a;
+    --surface: #13132b;
+    --surface2: #1e1e38;
+    --border: #2a2a4a;
+    --text: #e8e0d0;
+    --muted: #555;
+    --yellow: #ffcc00;
+    --red: #ff4444;
+    --red-dark: #660000;
+    --tier-s: #ff7f7f;
+    --tier-a: #ffb347;
+    --tier-b: #ffe066;
+    --tier-c: #77dd77;
+    --tier-d: #6cb4e4;
+    --tier-f: #c59ae4;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Nunito', sans-serif; overflow: hidden; }
+
+  /* ─── LAYOUT ─── */
+  #app { display: flex; flex-direction: column; height: 100%; padding-top: var(--safe-top); }
+
+  /* ─── HEADER ─── */
+  #header {
+    background: var(--surface);
+    border-bottom: 2px solid var(--border);
+    padding: 10px 14px 0;
+    flex-shrink: 0;
+  }
+  #app-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: var(--red);
+    text-shadow: 2px 2px 0 var(--red-dark), 0 0 20px rgba(255,68,68,0.4);
+    letter-spacing: 1px;
+    text-align: center;
+    margin-bottom: 10px;
+  }
+  #search-wrap {
+    display: flex;
+    align-items: center;
+    background: var(--bg);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 0 10px;
+    margin-bottom: 10px;
+    transition: border-color 0.2s;
+  }
+  #search-wrap:focus-within { border-color: var(--red); }
+  #search-icon { font-size: 15px; margin-right: 6px; flex-shrink: 0; }
+  #search-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: 'Nunito', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    padding: 10px 0;
+  }
+  #search-input::placeholder { color: var(--muted); }
+  #clear-search {
+    background: none; border: none; color: var(--muted);
+    font-size: 18px; cursor: pointer; padding: 0 0 0 6px; display: none;
+  }
+
+  /* ─── TABS ─── */
+  #tabs {
+    display: flex;
+    border-top: 2px solid var(--border);
+    margin: 0 -14px;
+  }
+  .tab {
+    flex: 1; text-align: center;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 7px;
+    padding: 9px 0;
+    color: var(--muted);
+    cursor: pointer;
+    border: none; background: none;
+    transition: color 0.2s;
+    letter-spacing: 0.5px;
+  }
+  .tab.active { color: var(--yellow); border-bottom: 2px solid var(--yellow); margin-bottom: -2px; }
+
+  /* ─── CONTENT ─── */
+  #content { flex: 1; overflow-y: auto; padding: 12px 14px; -webkit-overflow-scrolling: touch; }
+
+  /* ─── SEARCH RESULTS ─── */
+  #results-panel { display: none; }
+  #results-panel.active { display: block; }
+  #results-info { font-size: 11px; color: var(--muted); margin-bottom: 10px; font-weight: 700; }
+  #results-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .poke-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 4px 5px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.12s;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .poke-card:active { transform: scale(0.93); border-color: var(--red); }
+  .poke-card.in-tier { border-color: var(--yellow); }
+  .poke-card img { width: 64px; height: 64px; object-fit: contain; image-rendering: pixelated; display: block; margin: 0 auto; }
+  .poke-card .poke-num { font-size: 8px; color: var(--muted); margin-bottom: 2px; }
+  .poke-card .poke-name { font-size: 9px; color: #aaa; text-transform: capitalize; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  #search-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 2;
+    font-weight: 700;
+  }
+  .search-empty-icon { font-size: 40px; display: block; margin-bottom: 12px; }
+
+  /* ─── TIER LIST PANEL ─── */
+  #tier-panel { display: none; }
+  #tier-panel.active { display: block; }
+
+  .tier-row {
+    display: flex;
+    align-items: stretch;
+    min-height: 72px;
+    border-bottom: 2px solid var(--bg);
+    background: var(--surface);
+  }
+  .tier-row:first-child { border-radius: 10px 10px 0 0; }
+  .tier-row:last-child { border-radius: 0 0 10px 10px; border-bottom: none; }
+  .tier-label {
+    width: 54px;
+    min-width: 54px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 20px;
+    color: rgba(0,0,0,0.55);
+    text-shadow: 1px 1px 0 rgba(255,255,255,0.2);
+  }
+  .tier-slots {
+    flex: 1;
+    border-left: 2px solid var(--bg);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 6px 8px;
+    gap: 5px;
+    min-height: 72px;
+  }
+  .tier-empty { color: var(--border); font-size: 11px; font-weight: 700; font-style: italic; }
+  .tier-poke {
+    position: relative;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    cursor: pointer;
+  }
+  .tier-poke img { width: 56px; height: 56px; object-fit: contain; display: block; image-rendering: pixelated; }
+  .tier-poke .tp-del {
+    position: absolute; inset: 0;
+    background: rgba(180,0,0,0.0);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: transparent;
+    transition: background 0.15s, color 0.15s;
+  }
+  .tier-poke:active .tp-del { background: rgba(180,0,0,0.75); color: white; }
+
+  #tier-footer {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+    padding-bottom: var(--safe-bottom);
+  }
+  #export-btn {
+    flex: 1;
+    background: linear-gradient(135deg, #cc1111, var(--red));
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 14px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    box-shadow: 0 4px 0 var(--red-dark);
+    transition: opacity 0.2s, transform 0.1s;
+  }
+  #export-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--red-dark); }
+  #export-btn:disabled { opacity: 0.5; }
+  #clear-btn {
+    background: transparent;
+    border: 2px solid var(--border);
+    color: var(--muted);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  #clear-btn:active { border-color: var(--red); color: var(--red); }
+
+  /* ─── BOTTOM SHEET ─── */
+  #overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0);
+    pointer-events: none;
+    transition: background 0.25s;
+    z-index: 100;
+  }
+  #overlay.open { background: rgba(0,0,0,0.6); pointer-events: all; }
+  #sheet {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--surface);
+    border-radius: 20px 20px 0 0;
+    border-top: 2px solid var(--border);
+    padding: 0 16px calc(16px + var(--safe-bottom));
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    z-index: 101;
+  }
+  #sheet.open { transform: translateY(0); }
+  #sheet-handle { width: 40px; height: 4px; background: var(--border); border-radius: 2px; margin: 12px auto 16px; }
+  #sheet-poke {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    background: var(--surface2);
+    border-radius: 10px;
+    padding: 10px;
+    border: 2px solid var(--border);
+  }
+  #sheet-poke img { width: 60px; height: 60px; image-rendering: pixelated; flex-shrink: 0; }
+  #sheet-poke-info .poke-id { font-size: 10px; color: var(--muted); font-weight: 700; }
+  #sheet-poke-info .poke-nm { font-size: 16px; font-weight: 900; text-transform: capitalize; }
+  #sheet-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--yellow);
+    margin-bottom: 10px;
+  }
+  #sheet-tiers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .sheet-tier-btn {
+    border: none; border-radius: 8px;
+    padding: 14px 0;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 18px;
+    color: rgba(0,0,0,0.55);
+    font-weight: bold;
+    cursor: pointer;
+    transition: transform 0.12s;
+    text-shadow: 1px 1px 0 rgba(255,255,255,0.2);
+  }
+  .sheet-tier-btn:active { transform: scale(0.92); }
+  #sheet-cancel {
+    width: 100%; background: var(--surface2); border: 2px solid var(--border);
+    color: var(--muted); border-radius: 10px; padding: 13px;
+    font-family: 'Press Start 2P', monospace; font-size: 8px;
+    cursor: pointer;
+  }
+  #sheet-cancel:active { border-color: var(--red); color: var(--red); }
+
+  /* ─── LOADING / SPINNER ─── */
+  #loading-indicator {
+    display: none;
+    text-align: center;
+    padding: 30px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--yellow);
+    animation: blink 0.9s infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ─── TOAST ─── */
+  #toast {
+    position: fixed;
+    bottom: calc(80px + var(--safe-bottom));
+    left: 50%; transform: translateX(-50%) translateY(20px);
+    background: #222240;
+    color: var(--text);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-size: 12px; font-weight: 700;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.3s, transform 0.3s;
+    z-index: 200;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <div id="header">
+    <div id="app-title">⚡ POKÉMON TIER LIST</div>
+    <div id="search-wrap">
+      <span id="search-icon">🔍</span>
+      <input id="search-input" type="search" placeholder="Search all 1,025 Pokémon…" autocomplete="off" autocorrect="off" spellcheck="false">
+      <button id="clear-search" aria-label="Clear">✕</button>
+    </div>
+    <div id="tabs">
+      <button class="tab active" data-tab="results">SEARCH</button>
+      <button class="tab" data-tab="tier">TIER LIST</button>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div id="content">
+
+    <!-- SEARCH RESULTS -->
+    <div id="results-panel" class="active">
+      <div id="loading-indicator">SEARCHING…</div>
+      <div id="search-empty">
+        <span class="search-empty-icon">🔍</span>
+        Type a Pokémon name above.<br>Tap one to add it to a tier!
+      </div>
+      <div id="results-info" style="display:none"></div>
+      <div id="results-grid"></div>
+    </div>
+
+    <!-- TIER LIST -->
+    <div id="tier-panel">
+      <div id="tier-list-rows"></div>
+      <div id="tier-footer">
+        <button id="export-btn">📸 EXPORT JPEG</button>
+        <button id="clear-btn">🗑 CLEAR</button>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /app -->
+
+<!-- BOTTOM SHEET OVERLAY -->
+<div id="overlay"></div>
+<div id="sheet">
+  <div id="sheet-handle"></div>
+  <div id="sheet-poke">
+    <img id="sheet-img" src="" alt="">
+    <div id="sheet-poke-info">
+      <div class="poke-id" id="sheet-id"></div>
+      <div class="poke-nm" id="sheet-name"></div>
+    </div>
+  </div>
+  <div id="sheet-label">ADD TO TIER:</div>
+  <div id="sheet-tiers">
+    <button class="sheet-tier-btn" data-tier="S" style="background:var(--tier-s)">S</button>
+    <button class="sheet-tier-btn" data-tier="A" style="background:var(--tier-a)">A</button>
+    <button class="sheet-tier-btn" data-tier="B" style="background:var(--tier-b)">B</button>
+    <button class="sheet-tier-btn" data-tier="C" style="background:var(--tier-c)">C</button>
+    <button class="sheet-tier-btn" data-tier="D" style="background:var(--tier-d)">D</button>
+    <button class="sheet-tier-btn" data-tier="F" style="background:var(--tier-f)">F</button>
+  </div>
+  <button id="sheet-cancel">CANCEL</button>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────────────────
+const TIERS = ['S','A','B','C','D','F'];
+const TIER_COLORS = { S:'var(--tier-s)', A:'var(--tier-a)', B:'var(--tier-b)', C:'var(--tier-c)', D:'var(--tier-d)', F:'var(--tier-f)' };
+let allPokemon = [];        // [{id, name}]
+let tierState = { S:[], A:[], B:[], C:[], D:[], F:[] };  // each entry: {id, name, dataUrl}
+let selectedPoke = null;    // poke being added via sheet
+let activeTab = 'results';
+let searchTimer = null;
+
+// ─── ELEMENTS ────────────────────────────────────────────────────────────────
+const searchInput    = document.getElementById('search-input');
+const clearSearchBtn = document.getElementById('clear-search');
+const resultsPanel   = document.getElementById('results-panel');
+const tierPanel      = document.getElementById('tier-panel');
+const resultsGrid    = document.getElementById('results-grid');
+const resultsInfo    = document.getElementById('results-info');
+const searchEmpty    = document.getElementById('search-empty');
+const loadingInd     = document.getElementById('loading-indicator');
+const tierListRows   = document.getElementById('tier-list-rows');
+const overlay        = document.getElementById('overlay');
+const sheet          = document.getElementById('sheet');
+const sheetImg       = document.getElementById('sheet-img');
+const sheetId        = document.getElementById('sheet-id');
+const sheetName      = document.getElementById('sheet-name');
+const exportBtn      = document.getElementById('export-btn');
+const clearBtn       = document.getElementById('clear-btn');
+const toastEl        = document.getElementById('toast');
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    const res = await fetch('https://pokeapi.co/api/v2/pokemon?limit=1025');
+    const data = await res.json();
+    allPokemon = data.results.map(p => {
+      const id = p.url.split('/').filter(Boolean).pop();
+      return { id, name: p.name };
+    });
+  } catch(e) {
+    showToast('⚠️ Could not load Pokédex list');
+  }
+  renderTierList();
+}
+
+// ─── TABS ────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    activeTab = tab.dataset.tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    resultsPanel.classList.toggle('active', activeTab === 'results');
+    tierPanel.classList.toggle('active', activeTab === 'tier');
+  });
+});
+
+// ─── SEARCH ──────────────────────────────────────────────────────────────────
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim();
+  clearSearchBtn.style.display = q ? 'block' : 'none';
+  clearTimeout(searchTimer);
+  if (!q) { showEmpty(); return; }
+  loadingInd.style.display = 'block';
+  searchEmpty.style.display = 'none';
+  resultsInfo.style.display = 'none';
+  resultsGrid.innerHTML = '';
+  searchTimer = setTimeout(() => doSearch(q), 320);
+});
+
+clearSearchBtn.addEventListener('click', () => {
+  searchInput.value = '';
+  clearSearchBtn.style.display = 'none';
+  showEmpty();
+  searchInput.focus();
+});
+
+function showEmpty() {
+  loadingInd.style.display = 'none';
+  resultsInfo.style.display = 'none';
+  resultsGrid.innerHTML = '';
+  searchEmpty.style.display = 'block';
+}
+
+function doSearch(q) {
+  const matches = allPokemon.filter(p => p.name.includes(q.toLowerCase())).slice(0, 32);
+  loadingInd.style.display = 'none';
+  if (matches.length === 0) {
+    resultsGrid.innerHTML = '';
+    searchEmpty.style.display = 'block';
+    searchEmpty.innerHTML = `<span class="search-empty-icon">😶</span>No Pokémon found for "${q}"`;
+    return;
+  }
+  searchEmpty.style.display = 'none';
+  resultsInfo.style.display = 'block';
+  resultsInfo.textContent = `${matches.length} result${matches.length > 1 ? 's' : ''} — tap to add to a tier`;
+  resultsGrid.innerHTML = '';
+  matches.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'poke-card';
+    card.dataset.id = p.id;
+    card.dataset.name = p.name;
+    const inTier = TIERS.some(t => tierState[t].find(x => x.id === p.id));
+    if (inTier) card.classList.add('in-tier');
+    card.innerHTML = `
+      <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png"
+           alt="${p.name}" loading="lazy">
+      <div class="poke-num">#${p.id}</div>
+      <div class="poke-name">${p.name}</div>
+    `;
+    card.addEventListener('click', () => openSheet(p));
+    resultsGrid.appendChild(card);
+  });
+}
+
+// ─── BOTTOM SHEET ────────────────────────────────────────────────────────────
+function openSheet(poke) {
+  selectedPoke = poke;
+  sheetImg.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${poke.id}.png`;
+  sheetId.textContent = `#${poke.id}`;
+  sheetName.textContent = poke.name;
+  overlay.classList.add('open');
+  sheet.classList.add('open');
+}
+
+function closeSheet() {
+  overlay.classList.remove('open');
+  sheet.classList.remove('open');
+  selectedPoke = null;
+}
+
+overlay.addEventListener('click', closeSheet);
+document.getElementById('sheet-cancel').addEventListener('click', closeSheet);
+
+document.querySelectorAll('.sheet-tier-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!selectedPoke) return;
+    const tier = btn.dataset.tier;
+    const poke = selectedPoke;
+    closeSheet();
+
+    // Check already in this tier
+    if (tierState[tier].find(x => x.id === poke.id)) {
+      showToast(`${poke.name} is already in ${tier}!`);
+      return;
+    }
+
+    // Remove from any existing tier
+    TIERS.forEach(t => {
+      tierState[t] = tierState[t].filter(x => x.id !== poke.id);
+    });
+
+    // Fetch sprite as data URL (for reliable html2canvas export)
+    let dataUrl = null;
+    try {
+      const spriteUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${poke.id}.png`;
+      const response = await fetch(spriteUrl);
+      const blob = await response.blob();
+      dataUrl = await blobToDataURL(blob);
+    } catch(e) {
+      dataUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${poke.id}.png`;
+    }
+
+    tierState[tier].push({ id: poke.id, name: poke.name, dataUrl });
+    renderTierList();
+
+    // Refresh search results badges
+    const card = resultsGrid.querySelector(`[data-id="${poke.id}"]`);
+    if (card) card.classList.add('in-tier');
+
+    showToast(`${poke.name} → ${tier} tier!`);
+
+    // Auto-switch to tier list tab
+    if (activeTab !== 'tier') {
+      document.querySelector('[data-tab="tier"]').click();
+    }
+  });
+});
+
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// ─── TIER LIST RENDER ─────────────────────────────────────────────────────────
+function renderTierList() {
+  tierListRows.innerHTML = '';
+  TIERS.forEach(tier => {
+    const row = document.createElement('div');
+    row.className = 'tier-row';
+    row.innerHTML = `
+      <div class="tier-label" style="background:${TIER_COLORS[tier]}">${tier}</div>
+      <div class="tier-slots" id="slots-${tier}"></div>
+    `;
+    tierListRows.appendChild(row);
+
+    const slots = document.getElementById(`slots-${tier}`);
+    const pokes = tierState[tier];
+    if (pokes.length === 0) {
+      slots.innerHTML = '<span class="tier-empty">Empty</span>';
+    } else {
+      pokes.forEach(p => {
+        const tp = document.createElement('div');
+        tp.className = 'tier-poke';
+        tp.title = p.name;
+        tp.innerHTML = `
+          <img src="${p.dataUrl}" alt="${p.name}">
+          <div class="tp-del">✕</div>
+        `;
+        tp.addEventListener('click', () => {
+          tierState[tier] = tierState[tier].filter(x => x.id !== p.id);
+          renderTierList();
+          // Refresh badge in search results
+          const card = resultsGrid.querySelector(`[data-id="${p.id}"]`);
+          if (card) card.classList.remove('in-tier');
+          showToast(`Removed ${p.name}`);
+        });
+        slots.appendChild(tp);
+      });
+    }
+  });
+}
+
+// ─── CLEAR ───────────────────────────────────────────────────────────────────
+clearBtn.addEventListener('click', () => {
+  const total = TIERS.reduce((n, t) => n + tierState[t].length, 0);
+  if (total === 0) { showToast('Tier list is already empty!'); return; }
+  TIERS.forEach(t => tierState[t] = []);
+  renderTierList();
+  document.querySelectorAll('.poke-card.in-tier').forEach(c => c.classList.remove('in-tier'));
+  showToast('Tier list cleared');
+});
+
+// ─── EXPORT ──────────────────────────────────────────────────────────────────
+exportBtn.addEventListener('click', async () => {
+  const total = TIERS.reduce((n, t) => n + tierState[t].length, 0);
+  if (total === 0) { showToast('Add some Pokémon first!'); return; }
+
+  exportBtn.disabled = true;
+  exportBtn.textContent = '⏳ EXPORTING…';
+
+  try {
+    const canvas = await html2canvas(tierListRows, {
+      backgroundColor: '#0d0d1a',
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+    });
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+
+    // Android WebView bridge
+    if (window.Android && typeof window.Android.saveImage === 'function') {
+      window.Android.saveImage(dataUrl);
+      showToast('📸 Saved to Pictures!');
+    } else {
+      // Web fallback: download
+      const link = document.createElement('a');
+      link.download = 'pokemon-tier-list.jpg';
+      link.href = dataUrl;
+      link.click();
+      showToast('📸 Download started!');
+    }
+  } catch(e) {
+    showToast('Export failed — try again');
+    console.error(e);
+  }
+
+  exportBtn.disabled = false;
+  exportBtn.textContent = '📸 EXPORT JPEG';
+});
+
+// ─── TOAST ───────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2400);
+}
+
+// ─── START ───────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
