@@ -119,7 +119,7 @@ jobs:
           '    }\n'
           '    signingConfigs {\n'
           '        release {\n'
-          '            storeFile     file("../../keystore.jks")\n'
+          '            storeFile     file("../keystore.jks")\n'
           '            storePassword "pokemon123"\n'
           '            keyAlias      "pokemonkey"\n'
           '            keyPassword   "pokemon123"\n'
