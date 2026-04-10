@@ -14,21 +14,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Java ──────────────────────────────────────────────────────────────
+      # ── 2. Java 17 ───────────────────────────────────────────────────────────
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # ── 3. Gradle ────────────────────────────────────────────────────────────
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.6'
+      # ── 3. Install Gradle 8.6 directly ───────────────────────────────────────
+      - name: Install Gradle 8.6
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip -O /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt
+          echo "/opt/gradle-8.6/bin" >> $GITHUB_PATH
 
-      # ── 4. Keystore (ephemeral — generated fresh every build) ─────────────────
-      - name: Generate signing keystore
+      # ── 4. Locate Android SDK (pre-installed on ubuntu-latest) ────────────────
+      - name: Set ANDROID_HOME
+        run: |
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+
+      # ── 5. Accept SDK licences ────────────────────────────────────────────────
+      - name: Accept Android SDK licences
+        run: |
+          yes | sdkmanager --licenses 2>/dev/null || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" 2>/dev/null || true
+
+      # ── 6. Generate signing keystore ──────────────────────────────────────────
+      - name: Generate keystore
         run: |
           keytool -genkey -v \
             -keystore keystore.jks \
@@ -40,13 +54,12 @@ jobs:
             -keypass  pokemon123 \
             -dname "CN=PokemonTierList, OU=App, O=Dev, L=City, ST=State, C=US"
 
-      # ── 5. Scaffold entire Android project via Python ─────────────────────────
-      - name: Create Android project structure
+      # ── 7. Scaffold Android project ───────────────────────────────────────────
+      - name: Scaffold Android project
         shell: python3 {0}
         run: |
-          import os, shutil
+          import os, shutil, subprocess
 
-          # ── Directory tree ────────────────────────────────────────────────────
           dirs = [
               'app/src/main/java/com/pokemon/tierlist',
               'app/src/main/res/values',
@@ -55,220 +68,180 @@ jobs:
           for d in dirs:
               os.makedirs(d, exist_ok=True)
 
-          # ── Copy index.html into assets ───────────────────────────────────────
           shutil.copy('index.html', 'app/src/main/assets/index.html')
 
-          # ── settings.gradle ───────────────────────────────────────────────────
-          with open('settings.gradle', 'w') as f:
-              f.write("""\
-pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
-}
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
-rootProject.name = "PokemonTierList"
-include ':app'
-""")
+          open('settings.gradle', 'w').write(
+          'pluginManagement {\n'
+          '    repositories {\n'
+          '        google()\n'
+          '        mavenCentral()\n'
+          '        gradlePluginPortal()\n'
+          '    }\n'
+          '}\n'
+          'dependencyResolutionManagement {\n'
+          '    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)\n'
+          '    repositories {\n'
+          '        google()\n'
+          '        mavenCentral()\n'
+          '    }\n'
+          '}\n'
+          'rootProject.name = "PokemonTierList"\n'
+          'include \':app\'\n'
+          )
 
-          # ── Root build.gradle ─────────────────────────────────────────────────
-          with open('build.gradle', 'w') as f:
-              f.write("""\
-plugins {
-    id 'com.android.application' version '8.3.2' apply false
-}
-""")
+          open('build.gradle', 'w').write(
+          'plugins {\n'
+          '    id \'com.android.application\' version \'8.3.2\' apply false\n'
+          '}\n'
+          )
 
-          # ── app/build.gradle ──────────────────────────────────────────────────
-          with open('app/build.gradle', 'w') as f:
-              f.write("""\
-plugins {
-    id 'com.android.application'
-}
+          open('gradle.properties', 'w').write(
+          'org.gradle.jvmargs=-Xmx2048m\n'
+          'android.useAndroidX=true\n'
+          )
 
-android {
-    namespace 'com.pokemon.tierlist'
-    compileSdk 34
+          sdk = subprocess.check_output(['bash', '-c', 'echo $ANDROID_HOME']).decode().strip()
+          open('local.properties', 'w').write('sdk.dir=' + sdk + '\n')
 
-    defaultConfig {
-        applicationId "com.pokemon.tierlist"
-        minSdk 26
-        targetSdk 34
-        versionCode 1
-        versionName "1.0"
-    }
+          open('app/build.gradle', 'w').write(
+          'plugins {\n'
+          '    id \'com.android.application\'\n'
+          '}\n'
+          'android {\n'
+          '    namespace \'com.pokemon.tierlist\'\n'
+          '    compileSdk 34\n'
+          '    defaultConfig {\n'
+          '        applicationId "com.pokemon.tierlist"\n'
+          '        minSdk 26\n'
+          '        targetSdk 34\n'
+          '        versionCode 1\n'
+          '        versionName "1.0"\n'
+          '    }\n'
+          '    signingConfigs {\n'
+          '        release {\n'
+          '            storeFile     file("../../keystore.jks")\n'
+          '            storePassword "pokemon123"\n'
+          '            keyAlias      "pokemonkey"\n'
+          '            keyPassword   "pokemon123"\n'
+          '        }\n'
+          '    }\n'
+          '    buildTypes {\n'
+          '        release {\n'
+          '            minifyEnabled false\n'
+          '            signingConfig signingConfigs.release\n'
+          '        }\n'
+          '    }\n'
+          '    compileOptions {\n'
+          '        sourceCompatibility JavaVersion.VERSION_1_8\n'
+          '        targetCompatibility JavaVersion.VERSION_1_8\n'
+          '    }\n'
+          '}\n'
+          )
 
-    signingConfigs {
-        release {
-            storeFile     file("../keystore.jks")
-            storePassword "pokemon123"
-            keyAlias      "pokemonkey"
-            keyPassword   "pokemon123"
-        }
-    }
+          open('app/src/main/AndroidManifest.xml', 'w').write(
+          '<?xml version="1.0" encoding="utf-8"?>\n'
+          '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'
+          '    <uses-permission android:name="android.permission.INTERNET" />\n'
+          '    <application\n'
+          '        android:allowBackup="true"\n'
+          '        android:label="Pokemon Tier List"\n'
+          '        android:usesCleartextTraffic="true">\n'
+          '        <activity\n'
+          '            android:name=".MainActivity"\n'
+          '            android:exported="true"\n'
+          '            android:configChanges="orientation|screenSize|keyboardHidden">\n'
+          '            <intent-filter>\n'
+          '                <action android:name="android.intent.action.MAIN" />\n'
+          '                <category android:name="android.intent.category.LAUNCHER" />\n'
+          '            </intent-filter>\n'
+          '        </activity>\n'
+          '    </application>\n'
+          '</manifest>\n'
+          )
 
-    buildTypes {
-        release {
-            minifyEnabled false
-            signingConfig signingConfigs.release
-        }
-    }
+          open('app/src/main/res/values/strings.xml', 'w').write(
+          '<?xml version="1.0" encoding="utf-8"?>\n'
+          '<resources>\n'
+          '    <string name="app_name">Pokemon Tier List</string>\n'
+          '</resources>\n'
+          )
 
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
-}
-""")
+          open('app/src/main/java/com/pokemon/tierlist/MainActivity.java', 'w').write(
+          'package com.pokemon.tierlist;\n'
+          'import android.annotation.SuppressLint;\n'
+          'import android.app.Activity;\n'
+          'import android.content.ContentValues;\n'
+          'import android.graphics.Bitmap;\n'
+          'import android.graphics.BitmapFactory;\n'
+          'import android.net.Uri;\n'
+          'import android.os.Bundle;\n'
+          'import android.os.Environment;\n'
+          'import android.provider.MediaStore;\n'
+          'import android.util.Base64;\n'
+          'import android.webkit.JavascriptInterface;\n'
+          'import android.webkit.WebSettings;\n'
+          'import android.webkit.WebView;\n'
+          'import android.webkit.WebViewClient;\n'
+          'import android.widget.Toast;\n'
+          'import java.io.OutputStream;\n'
+          'public class MainActivity extends Activity {\n'
+          '    private WebView webView;\n'
+          '    @SuppressLint("SetJavaScriptEnabled")\n'
+          '    @Override\n'
+          '    protected void onCreate(Bundle savedInstanceState) {\n'
+          '        super.onCreate(savedInstanceState);\n'
+          '        webView = new WebView(this);\n'
+          '        setContentView(webView);\n'
+          '        WebSettings s = webView.getSettings();\n'
+          '        s.setJavaScriptEnabled(true);\n'
+          '        s.setDomStorageEnabled(true);\n'
+          '        s.setAllowFileAccess(true);\n'
+          '        s.setAllowUniversalAccessFromFileURLs(true);\n'
+          '        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);\n'
+          '        s.setCacheMode(WebSettings.LOAD_DEFAULT);\n'
+          '        webView.addJavascriptInterface(new Bridge(), "Android");\n'
+          '        webView.setWebViewClient(new WebViewClient());\n'
+          '        webView.loadUrl("file:///android_asset/index.html");\n'
+          '    }\n'
+          '    @Override\n'
+          '    public void onBackPressed() {\n'
+          '        if (webView.canGoBack()) webView.goBack();\n'
+          '        else super.onBackPressed();\n'
+          '    }\n'
+          '    class Bridge {\n'
+          '        @JavascriptInterface\n'
+          '        public boolean isAndroid() { return true; }\n'
+          '        @JavascriptInterface\n'
+          '        public void saveImage(String dataUrl) {\n'
+          '            try {\n'
+          '                String b64 = dataUrl.contains(",") ? dataUrl.split(",")[1] : dataUrl;\n'
+          '                byte[] bytes = Base64.decode(b64, Base64.DEFAULT);\n'
+          '                Bitmap bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);\n'
+          '                String filename = "pokemon_tierlist_" + System.currentTimeMillis() + ".jpg";\n'
+          '                ContentValues values = new ContentValues();\n'
+          '                values.put(MediaStore.Images.Media.DISPLAY_NAME, filename);\n'
+          '                values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");\n'
+          '                values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES);\n'
+          '                Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);\n'
+          '                OutputStream out = getContentResolver().openOutputStream(uri);\n'
+          '                bmp.compress(Bitmap.CompressFormat.JPEG, 95, out);\n'
+          '                out.close();\n'
+          '                runOnUiThread(() -> Toast.makeText(MainActivity.this, "Saved to Pictures!", Toast.LENGTH_LONG).show());\n'
+          '            } catch (Exception e) {\n'
+          '                runOnUiThread(() -> Toast.makeText(MainActivity.this, "Save failed: " + e.getMessage(), Toast.LENGTH_LONG).show());\n'
+          '            }\n'
+          '        }\n'
+          '    }\n'
+          '}\n'
+          )
 
-          # ── AndroidManifest.xml ───────────────────────────────────────────────
-          with open('app/src/main/AndroidManifest.xml', 'w') as f:
-              f.write("""\
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+          print("Scaffold complete.")
 
-    <uses-permission android:name="android.permission.INTERNET" />
-
-    <application
-        android:allowBackup="true"
-        android:label="Pokémon Tier List"
-        android:usesCleartextTraffic="true">
-
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:configChanges="orientation|screenSize|keyboardHidden">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
-    </application>
-</manifest>
-""")
-
-          # ── res/values/strings.xml ────────────────────────────────────────────
-          with open('app/src/main/res/values/strings.xml', 'w') as f:
-              f.write("""\
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">Pokémon Tier List</string>
-</resources>
-""")
-
-          # ── MainActivity.java ─────────────────────────────────────────────────
-          with open('app/src/main/java/com/pokemon/tierlist/MainActivity.java', 'w') as f:
-              f.write("""\
-package com.pokemon.tierlist;
-
-import android.annotation.SuppressLint;
-import android.app.Activity;
-import android.content.ContentValues;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.net.Uri;
-import android.os.Build;
-import android.os.Bundle;
-import android.os.Environment;
-import android.provider.MediaStore;
-import android.util.Base64;
-import android.webkit.JavascriptInterface;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
-import android.widget.Toast;
-import java.io.OutputStream;
-
-public class MainActivity extends Activity {
-
-    private WebView webView;
-
-    @SuppressLint("SetJavaScriptEnabled")
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
-        webView = new WebView(this);
-        setContentView(webView);
-
-        WebSettings s = webView.getSettings();
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setAllowFileAccess(true);
-        s.setAllowUniversalAccessFromFileURLs(true);   // allows fetch() from file://
-        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        s.setCacheMode(WebSettings.LOAD_DEFAULT);
-
-        webView.addJavascriptInterface(new Bridge(), "Android");
-        webView.setWebViewClient(new WebViewClient());
-        webView.loadUrl("file:///android_asset/index.html");
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (webView.canGoBack()) webView.goBack();
-        else super.onBackPressed();
-    }
-
-    // ── JavaScript bridge ────────────────────────────────────────────────────
-    class Bridge {
-
-        @JavascriptInterface
-        public boolean isAndroid() { return true; }
-
-        @JavascriptInterface
-        public void saveImage(String dataUrl) {
-            try {
-                // Strip the data:image/jpeg;base64, prefix
-                String b64 = dataUrl.contains(",") ? dataUrl.split(",")[1] : dataUrl;
-                byte[] bytes = Base64.decode(b64, Base64.DEFAULT);
-                Bitmap bmp   = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-
-                String filename = "pokemon_tierlist_" + System.currentTimeMillis() + ".jpg";
-                OutputStream out;
-
-                // MediaStore (API 29+) — no storage permission required
-                ContentValues values = new ContentValues();
-                values.put(MediaStore.Images.Media.DISPLAY_NAME, filename);
-                values.put(MediaStore.Images.Media.MIME_TYPE,    "image/jpeg");
-                values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES);
-                Uri uri = getContentResolver().insert(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
-                out = getContentResolver().openOutputStream(uri);
-
-                bmp.compress(Bitmap.CompressFormat.JPEG, 95, out);
-                out.close();
-
-                runOnUiThread(() ->
-                    Toast.makeText(MainActivity.this,
-                        "Saved to Pictures! 📸", Toast.LENGTH_LONG).show());
-
-            } catch (Exception e) {
-                runOnUiThread(() ->
-                    Toast.makeText(MainActivity.this,
-                        "Save failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
-            }
-        }
-    }
-}
-""")
-
-          print("Android project scaffold complete.")
-
-      # ── 6. Build signed release APK ───────────────────────────────────────────
+      # ── 8. Build signed release APK ───────────────────────────────────────────
       - name: Build release APK
-        run: gradle assembleRelease
+        run: gradle assembleRelease --no-daemon --stacktrace
 
-      # ── 7. Upload artifact ────────────────────────────────────────────────────
+      # ── 9. Upload APK artifact ────────────────────────────────────────────────
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
